@@ -18,8 +18,8 @@ class ResponseEngine:
         # Note: If test_type is masked (AC_masked, BC_masked), we currently use the base (AC, BC)
         # unless specific masked thresholds are stored.
         base_test_type = attempt.test_type
-        if base_test_type == "AC_masked": base_test_type = "AC"
-        if base_test_type == "BC_masked": base_test_type = "BC"
+        if base_test_type == TestTypeEnum.AC_MASKED: base_test_type = TestTypeEnum.AC
+        if base_test_type == TestTypeEnum.BC_MASKED: base_test_type = TestTypeEnum.BC
 
         point = next((
             p for p in target_ear.audiogram_points

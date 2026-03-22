@@ -17,6 +17,17 @@ class PatientRepository:
         return [PatientDTO.model_validate(p) for p in patients]
 
     @staticmethod
+    async def get_profiles_by_source(db: AsyncSession, source_type):
+
+        result = await db.execute(
+            select(Patient).where(Patient.source_type == source_type)
+        )
+
+        patients = result.scalars().all()
+
+        return [PatientDTO.model_validate(p) for p in patients]
+
+    @staticmethod
     async def save_patient(db: AsyncSession, dto: PatientDTO) -> PatientDTO:
 
         patient = Patient(
