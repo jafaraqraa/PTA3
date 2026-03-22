@@ -12,16 +12,19 @@ async def test_generator_and_response():
     print("Testing Patient Generator...")
     db = MagicMock(spec=AsyncSession)
 
-    # Mocking PatientRepository.save_patient
+    # Mocking PatientRepository
     from app.repositories.patient_repository import PatientRepository
     from app.schemas.patient_schema import PatientDTO
 
-    # Simple mock that just returns a DTO with an ID
+    # Mock save_patient
     async def mock_save_patient(db, dto):
         dto.id = 1
         return dto
-
     PatientRepository.save_patient = mock_save_patient
+
+    # Mock get_real_patients to return empty list (trigger fallback)
+    PatientRepository.get_real_patients = MagicMock(return_value=asyncio.Future())
+    PatientRepository.get_real_patients.return_value.set_result([])
 
     # Generate multiple patients to check for variance and profile selection
     for i in range(3):

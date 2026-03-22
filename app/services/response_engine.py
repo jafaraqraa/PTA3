@@ -15,20 +15,16 @@ class ResponseEngine:
             return ResponseEnum.NOT_HEARD
 
         # 2. Find the threshold for the given test type and frequency
-        # Note: If test_type is masked (AC_masked, BC_masked), we currently use the base (AC, BC)
-        # unless specific masked thresholds are stored.
-        base_test_type = attempt.test_type
-        if base_test_type == "AC_masked": base_test_type = "AC"
-        if base_test_type == "BC_masked": base_test_type = "BC"
-
+        # Use exact test type first (handles AC_masked/BC_masked)
         point = next((
             p for p in target_ear.audiogram_points
             if p.test_type == attempt.test_type and p.frequency == attempt.frequency
         ), None)
 
-        # Fallback to base test type if masked not found
-        if not point and attempt.test_type != base_test_type:
-             point = next((
+        # Fallback to base test type (AC/BC) if masked was requested but not found
+        if not point and attempt.test_type in ["AC_masked", "BC_masked"]:
+            base_test_type = "AC" if attempt.test_type == "AC_masked" else "BC"
+            point = next((
                 p for p in target_ear.audiogram_points
                 if p.test_type == base_test_type and p.frequency == attempt.frequency
             ), None)

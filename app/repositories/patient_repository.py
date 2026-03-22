@@ -1,11 +1,25 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.models.patient import Patient, Ear, AudiogramPoint
+from app.models.enums import PatientSourceEnum
 from app.schemas.patient_schema import PatientDTO
 
 
 class PatientRepository:
+
+    @staticmethod
+    async def get_real_patients(db: AsyncSession) -> list[Patient]:
+        """Fetches all patients with source_type='real' including ears and audiogram points."""
+        result = await db.execute(
+            select(Patient)
+            .where(Patient.source_type == PatientSourceEnum.REAL)
+            .options(
+                selectinload(Patient.ears).selectinload(Ear.audiogram_points)
+            )
+        )
+        return list(result.scalars().all())
 
     @staticmethod
     async def get_profiles(db: AsyncSession):

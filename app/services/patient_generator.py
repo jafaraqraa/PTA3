@@ -8,7 +8,7 @@ from app.models.enums import EarSideEnum, TestTypeEnum, PatientSourceEnum, Heari
 
 class PatientGenerator:
 
-    # Hearing profile templates with base AC and BC thresholds
+    # Fallback profiles when no 'REAL' source patients are available
     HEARING_PROFILES = {
         "Normal": {
             "hearing_type": HearingTypeEnum.NORMAL,
@@ -54,15 +54,80 @@ class PatientGenerator:
 
     @staticmethod
     async def generate_patient(db: AsyncSession) -> int | None:
+        """
+        Generates a virtual patient using Exemplar-Based Perturbed Sampling (EBPS).
+        Falls back to template-based generation if no 'REAL' patients are found.
+        """
+        real_patients = await PatientRepository.get_real_patients(db)
 
-        def add_variance(value: float) -> float:
-            """Adds a random variance of [-5, 0, 5] dB."""
-            variance = random.choice([-5, 0, 5])
-            return max(-10, min(120, value + variance))
+        if real_patients:
+            # EBPS: Sample and perturb a real ear-pair
+            base_patient = random.choice(real_patients)
+            new_patient = PatientGenerator._ebps_perturb(base_patient)
+        else:
+            # Fallback to templates
+            new_patient = PatientGenerator._generate_from_template()
 
-        # Randomly select a profile
+        saved_patient = await PatientRepository.save_patient(db, new_patient)
+        return saved_patient.id
+
+    @staticmethod
+    def _ebps_perturb(base_patient) -> PatientDTO:
+        """Applies jitter and clinical constraints to a real patient template."""
+        jitter_base = random.choice([-5, 0, 5])
+
+        ears_dto = []
+        for base_ear in base_patient.ears:
+            new_points = []
+
+            # Map existing points to facilitate BC <= AC check
+            ac_map = {p.frequency: p.threshold_db for p in base_ear.audiogram_points if p.test_type in [TestTypeEnum.AC, TestTypeEnum.AC_MASKED]}
+            bc_map = {p.frequency: p.threshold_db for p in base_ear.audiogram_points if p.test_type in [TestTypeEnum.BC, TestTypeEnum.BC_MASKED]}
+
+            for p in base_ear.audiogram_points:
+                # Apply base jitter
+                val = p.threshold_db + jitter_base
+
+                # Apply clinical constraints
+                if p.test_type in [TestTypeEnum.AC, TestTypeEnum.AC_MASKED]:
+                    # Ensure BC <= AC
+                    if p.frequency in bc_map:
+                        val = max(val, bc_map[p.frequency] + jitter_base)
+
+                if p.test_type in [TestTypeEnum.BC, TestTypeEnum.BC_MASKED]:
+                    # Ensure BC <= AC
+                    if p.frequency in ac_map:
+                        val = min(val, ac_map[p.frequency] + jitter_base)
+
+                val = max(-10, min(120, val))
+                val = round(val / 5) * 5 # Ensure 5dB steps
+
+                new_points.append(AudiogramPointDTO(
+                    test_type=p.test_type,
+                    frequency=p.frequency,
+                    threshold_db=val
+                ))
+
+            ears_dto.append(EarDTO(
+                side=base_ear.side,
+                hearing_type=base_ear.hearing_type,
+                audiogram_points=new_points
+            ))
+
+        return PatientDTO(
+            source_type=PatientSourceEnum.SYNTHETIC,
+            ears=ears_dto
+        )
+
+    @staticmethod
+    def _generate_from_template() -> PatientDTO:
+        """Generates a patient from hardcoded clinical templates."""
         profile_name = random.choice(list(PatientGenerator.HEARING_PROFILES.keys()))
         profile = PatientGenerator.HEARING_PROFILES[profile_name]
+
+        def add_variance(value: float) -> float:
+            variance = random.choice([-5, 0, 5])
+            return max(-10, min(120, value + variance))
 
         def build_points(ac_base: dict, bc_base: dict) -> list[AudiogramPointDTO]:
             points = []
@@ -92,10 +157,7 @@ class PatientGenerator:
             audiogram_points=build_points(profile["ac"], profile["bc"])
         )
 
-        new_patient = PatientDTO(
+        return PatientDTO(
             source_type=PatientSourceEnum.SYNTHETIC,
             ears=[left_ear, right_ear]
         )
-
-        saved_patient = await PatientRepository.save_patient(db, new_patient)
-        return saved_patient.id
