@@ -19,7 +19,9 @@ class PatientRepository:
     @staticmethod
     async def save_patient(db: AsyncSession, dto: PatientDTO) -> PatientDTO:
 
-        patient = Patient()
+        patient = Patient(
+            source_type=dto.source_type
+        )
 
         for ear_dto in dto.ears:
             ear = Ear(
